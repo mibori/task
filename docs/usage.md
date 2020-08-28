@@ -8,7 +8,7 @@ The example below allows compiling a Go app and uses [Minify][minify] to concat
 and minify multiple CSS files into a single one.
 
 ```yaml
-version: '2'
+version: '3'
 
 tasks:
   build:
@@ -33,12 +33,14 @@ executable called must be available by the OS or in PATH.
 
 If you omit a task name, "default" will be assumed.
 
-## Environment
+## Environment variables
+
+### Task
 
 You can use `env` to set custom environment variables for a specific task:
 
 ```yaml
-version: '2'
+version: '3'
 
 tasks:
   greet:
@@ -52,7 +54,7 @@ Additionally, you can set globally environment variables, that'll be available
 to all tasks:
 
 ```yaml
-version: '2'
+version: '3'
 
 env:
   GREETING: Hey, there!
@@ -66,53 +68,37 @@ tasks:
 > NOTE: `env` supports expansion and retrieving output from a shell command
 > just like variables, as you can see on the [Variables](#variables) section.
 
-## Operating System specific tasks
+### .env files
 
-If you add a `Taskfile_{{GOOS}}.yml` you can override or amend your Taskfile
-based on the operating system.
+You can also ask Task to include `.env` like files by using the `dotenv:`
+setting:
 
-Example:
-
-Taskfile.yml:
-
-```yaml
-version: '2'
-
-tasks:
-  build:
-    cmds:
-      - echo "default"
+```
+# .env
+KEYNAME=VALUE
 ```
 
-Taskfile_linux.yml:
 
 ```yaml
-version: '2'
+# Taskfile.yml
+
+version: '3'
+
+dotenv: ['.env']
 
 tasks:
-  build:
+  greet:
     cmds:
-      - echo "linux"
+      - echo "Using $KEYNAME"
 ```
-
-Will print out `linux` and not `default`.
-
-Keep in mind that the version of the files should match. Also, when redefining
-a task the whole task is replaced, properties of the task are not merged.
-
-It's also possible to have an OS specific `Taskvars.yml` file, like
-`Taskvars_windows.yml`, `Taskvars_linux.yml`, or `Taskvars_darwin.yml`. See the
-[variables section](#variables) below.
 
 ## Including other Taskfiles
-
-> This feature is still experimental and may have bugs.
 
 If you want to share tasks between different projects (Taskfiles), you can use
 the importing mechanism to include other Taskfiles using the `includes` keyword:
 
 ```yaml
-version: '2'
+version: '3'
 
 includes:
   docs: ./documentation # will look for ./documentation/Taskfile.yml
@@ -123,6 +109,36 @@ The tasks described in the given Taskfiles will be available with the informed
 namespace. So, you'd call `task docs:serve` to run the `serve` task from
 `documentation/Taskfile.yml` or `task docker:build` to run the `build` task
 from the `DockerTasks.yml` file.
+
+### OS-specific Taskfiles
+
+With `version: '2'`, task automatically includes any `Taskfile_{{OS}}.yml`
+if it exists (for example: `Taskfile_windows.yml`, `Taskfile_linux.yml` or
+`Taskfile_darwin.yml`). Since this behavior was a bit too implicit, it
+was removed on version 3, but you still can have a similar behavior by
+explicitly importing these files:
+
+```yaml
+version: '3'
+
+includes:
+  build: ./Taskfile_{{OS}}.yml
+```
+
+### Directory of included Taskfile
+
+By default, included Taskfile's tasks are ran in the current directory, even
+if the Taskfile is in another directory, but you can force its tasks to run
+in another directory by using this alternative syntax:
+
+```yaml
+version: '3'
+
+includes:
+  docs:
+    taskfile: ./docs/Taskfile.yml
+    dir: ./docs
+```
 
 > The included Taskfiles must be using the same schema version the main
 > Taskfile uses.
@@ -138,7 +154,7 @@ located. But you can easily make the task run in another folder informing
 `dir`:
 
 ```yaml
-version: '2'
+version: '3'
 
 tasks:
   serve:
@@ -160,7 +176,7 @@ You may have tasks that depend on others. Just pointing them on `deps` will
 make them run automatically before running the parent task:
 
 ```yaml
-version: '2'
+version: '3'
 
 tasks:
   build:
@@ -179,7 +195,7 @@ In the above example, `assets` will always run right before `build` if you run
 A task can have only dependencies and no commands to group tasks together:
 
 ```yaml
-version: '2'
+version: '3'
 
 tasks:
   assets:
@@ -204,7 +220,7 @@ If you want to pass information to dependencies, you can do that the same
 manner as you would to [call another task](#calling-another-task):
 
 ```yaml
-version: '2'
+version: '3'
 
 tasks:
   default:
@@ -228,7 +244,7 @@ often result in a faster build pipeline. But in some situations you may need
 to call other tasks serially. In this case, just use the following syntax:
 
 ```yaml
-version: '2'
+version: '3'
 
 tasks:
   main-task:
@@ -250,7 +266,7 @@ Overriding variables in the called task is as simple as informing `vars`
 attribute:
 
 ```yaml
-version: '2'
+version: '3'
 
 tasks:
   main-task:
@@ -273,11 +289,13 @@ The above syntax is also supported in `deps`.
 
 ## Prevent unnecessary work
 
+### By fingerprinting locally generated files and their sources
+
 If a task generates something, you can inform Task the source and generated
 files, so Task will prevent to run them if not necessary.
 
 ```yaml
-version: '2'
+version: '3'
 
 tasks:
   build:
@@ -302,18 +320,18 @@ tasks:
       - public/style.css
 ```
 
-`sources` and `generates` can be files or file patterns. When both are given,
-Task will compare the modification date/time of the files to determine if it's
+`sources` and `generates` can be files or file patterns. When given,
+Task will compare the checksum of the source files to determine if it's
 necessary to run the task. If not, it will just print a message like
 `Task "js" is up to date`.
-
-If you prefer this check to be made by the content of the files, instead of
-its timestamp, just set the `method` property to `checksum`.
 You will probably want to ignore the `.task` folder in your `.gitignore` file
 (It's there that Task stores the last checksum).
 
+If you prefer this check to be made by the modification timestamp of the files,
+instead of its checksum (content), just set the `method` property to `timestamp`.
+
 ```yaml
-version: '2'
+version: '3'
 
 tasks:
   build:
@@ -328,11 +346,17 @@ tasks:
 
 > TIP: method `none` skips any validation and always run the task.
 
+> NOTE: for the `checksum` (default) method to work, it's only necessary to
+> inform the source files, but if you want to use the `timestamp` method, you
+> also need to inform the generated files with `generates`.
+
+### Using programmatic checks to indicate a task is up to date.
+
 Alternatively, you can inform a sequence of tests as `status`. If no error
 is returned (exit status 0), the task is considered up-to-date:
 
 ```yaml
-version: '2'
+version: '3'
 
 tasks:
   generate-files:
@@ -347,18 +371,37 @@ tasks:
       - test -f directory/file2.txt
 ```
 
+Normally, you would use `sources` in combination with
+`generates` - but for tasks that generate remote artifacts (Docker images,
+deploys, CD releases) the checksum source and timestamps require either
+access to the artifact or for an out-of-band refresh of the `.checksum`
+fingerprint file.
+
+Two special variables `{{.CHECKSUM}}` and `{{.TIMESTAMP}}` are available
+for interpolation within `status` commands, depending on the method assigned
+to fingerprint the sources. Only `source` globs are fingerprinted.
+
+Note that the `{{.TIMESTAMP}}` variable is a "live" Go `time.Time` struct, and
+can be formatted using any of the methods that `time.Time` responds to.
+
+See [the Go Time documentation](https://golang.org/pkg/time/) for more information.
+
 You can use `--force` or `-f` if you want to force a task to run even when
 up-to-date.
 
 Also, `task --status [tasks]...` will exit with a non-zero exit code if any of
 the tasks are not up-to-date.
 
-If you need a certain set of conditions to be _true_ you can use the
-`preconditions` stanza.  `preconditions` are very similar to `status`
-lines except they support `sh` expansion and they SHOULD all return 0.
+### Using programmatic checks to cancel execution of an task and it's dependencies
+
+In addition to `status` checks, there are also `preconditions` checks, which are
+the logical inverse of `status` checks.  That is, if you need a certain set of
+conditions to be _true_ you can use the `preconditions` stanza.
+`preconditions` are similar to `status` lines except they support `sh`
+expansion and they SHOULD all return 0.
 
 ```yaml
-version: '2'
+version: '3'
 
 tasks:
   generate-files:
@@ -386,19 +429,20 @@ executing tasks that depend on it, a `precondition` will fail a task, along
 with any other tasks that depend on it.
 
 ```yaml
-version: '2'
+version: '3'
+
 tasks:
-  task_will_fail:
+  task-will-fail:
     preconditions:
       - sh: "exit 1"
 
-  task_will_also_fail:
+  task-will-also-fail:
     deps:
-      - task_will_fail
+      - task-will-fail
 
-  task_will_still_fail:
+  task-will-still-fail:
     cmds:
-      - task: task_will_fail
+      - task: task-will-fail
       - echo "I will not run"
 ```
 
@@ -408,10 +452,9 @@ When doing interpolation of variables, Task will look for the below.
 They are listed below in order of importance (e.g. most important first):
 
 - Variables declared in the task definition
-- Variables given while calling a task from another.
+- Variables given while calling a task from another
   (See [Calling another task](#calling-another-task) above)
-- Variables declared in the `vars:` option in the `Taskfile`
-- Variables available in the `Taskvars.yml` file
+- Global variables (those declared in the `vars:` option in the Taskfile)
 - Environment variables
 
 Example of sending parameters with environment variables:
@@ -420,25 +463,20 @@ Example of sending parameters with environment variables:
 $ TASK_VARIABLE=a-value task do-something
 ```
 
+> TIP: A special variable `.TASK` is always available containing the task name.
+
 Since some shells don't support above syntax to set environment variables
 (Windows) tasks also accepts a similar style when not in the beginning of
-the command. Variables given in this form are only visible to the task called
-right before.
+the command.
 
 ```bash
 $ task write-file FILE=file.txt "CONTENT=Hello, World!" print "MESSAGE=All done!"
 ```
 
-If you want to set global variables using this syntax, give it before any task:
-
-```bash
-$ task OUTPUT=file.txt generate-file
-```
-
 Example of locally declared vars:
 
 ```yaml
-version: '2'
+version: '3'
 
 tasks:
   print-var:
@@ -451,7 +489,7 @@ tasks:
 Example of global vars in a `Taskfile.yml`:
 
 ```yaml
-version: '2'
+version: '3'
 
 vars:
   GREETING: Hello from Taskfile!
@@ -462,38 +500,6 @@ tasks:
       - echo "{{.GREETING}}"
 ```
 
-Example of `Taskvars.yml` file:
-
-```yaml
-PROJECT_NAME: My Project
-DEV_MODE: production
-GIT_COMMIT: {sh: git log -n 1 --format=%h}
-```
-
-### Variables expansion
-
-Variables are expanded 2 times by default. You can change that by setting the
-`expansions:` option. Change that will be necessary if you compose many
-variables together:
-
-```yaml
-version: '2'
-
-expansions: 3
-
-vars:
-  FOO: foo
-  BAR: bar
-  BAZ: baz
-  FOOBAR: "{{.FOO}}{{.BAR}}"
-  FOOBARBAZ: "{{.FOOBAR}}{{.BAZ}}"
-
-tasks:
-  default:
-    cmds:
-      - echo "{{.FOOBARBAZ}}"
-```
-
 ### Dynamic variables
 
 The below syntax (`sh:` prop in a variable) is considered a dynamic variable.
@@ -501,7 +507,7 @@ The value will be treated as a command and the output assigned. If there is one
 or more trailing newlines, the last newline will be trimmed.
 
 ```yaml
-version: '2'
+version: '3'
 
 tasks:
   build:
@@ -519,11 +525,11 @@ This works for all types of variables.
 Task parse commands as [Go's template engine][gotemplate] before executing
 them. Variables are accessible through dot syntax (`.VARNAME`).
 
-All functions by the Go's [sprig lib](http://masterminds.github.io/sprig/)
+All functions by the Go's [slim-sprig lib](https://go-task.github.io/slim-sprig/)
 are available. The following example gets the current date in a given format:
 
 ```yaml
-version: '2'
+version: '3'
 
 tasks:
   print-date:
@@ -549,7 +555,7 @@ Task also adds the following functions:
 Example:
 
 ```yaml
-version: '2'
+version: '3'
 
 tasks:
   print-os:
@@ -577,7 +583,7 @@ Running `task --list` (or `task -l`) lists all tasks with a description.
 The following Taskfile:
 
 ```yaml
-version: '2'
+version: '3'
 
 tasks:
   build:
@@ -608,11 +614,11 @@ would print the following output:
 
 ## Display summary of task
 
-Running `task --summary task-name` will show a summary of a task
+Running `task --summary task-name` will show a summary of a task.
 The following Taskfile:
 
 ```yaml
-version: '2'
+version: '3'
 
 tasks:
   release:
@@ -620,7 +626,7 @@ tasks:
     summary: |
       Release your project to github
 
-      It will build your project before starting the release it.
+      It will build your project before starting the release.
       Please make sure that you have set GITHUB_TOKEN before starting.
     cmds:
       - your-release-tool
@@ -637,7 +643,7 @@ task: release
 
 Release your project to github
 
-It will build your project before starting the release it.
+It will build your project before starting the release.
 Please make sure that you have set GITHUB_TOKEN before starting.
 
 dependencies:
@@ -651,13 +657,37 @@ If the task does not have a summary or a description, a warning is printed.
 
 Please note: *showing the summary will not execute the command*.
 
+## Overriding task name
+
+Sometimes you may want to override the task name print on summary, up-to-date
+messages to STDOUT, etc. In this case you can just set `label:`, which can also
+be interpolated with variables:
+
+```yaml
+version: '3'
+
+tasks:
+  default:
+    - task: print
+      vars:
+        MESSAGE: hello
+    - task: print
+      vars:
+        MESSAGE: world
+
+  print:
+    label: 'print-{{.MESSAGE}}'
+    cmds:
+      - echo "{{.MESSAGE}}"
+```
+
 ## Silent mode
 
 Silent mode disables echoing of commands before Task runs it.
 For the following Taskfile:
 
 ```yaml
-version: '2'
+version: '3'
 
 tasks:
   echo:
@@ -683,7 +713,7 @@ There are four ways to enable silent mode:
 * At command level:
 
 ```yaml
-version: '2'
+version: '3'
 
 tasks:
   echo:
@@ -695,7 +725,7 @@ tasks:
 * At task level:
 
 ```yaml
-version: '2'
+version: '3'
 
 tasks:
   echo:
@@ -707,7 +737,7 @@ tasks:
 * Globally at Taskfile level:
 
 ```yaml
-version: '2'
+version: '3'
 
 silent: true
 
@@ -722,7 +752,7 @@ tasks:
 If you want to suppress STDOUT instead, just redirect a command to `/dev/null`:
 
 ```yaml
-version: '2'
+version: '3'
 
 tasks:
   echo:
@@ -741,7 +771,7 @@ You have the option to ignore errors during command execution.
 Given the following Taskfile:
 
 ```yaml
-version: '2'
+version: '3'
 
 tasks:
   echo:
@@ -754,7 +784,7 @@ Task will abort the execution after running `exit 1` because the status code `1`
 However it is possible to continue with execution using `ignore_error`:
 
 ```yaml
-version: '2'
+version: '3'
 
 tasks:
   echo:
@@ -785,7 +815,7 @@ options you can choose:
 To choose another one, just set it to root in the Taskfile:
 
 ```yaml
-version: '2'
+version: '3'
 
 output: 'group'
 
@@ -802,7 +832,7 @@ tasks:
  with the `prefix:` attribute:
 
  ```yaml
-version: '2'
+version: '3'
 
 output: prefixed
 
@@ -832,11 +862,27 @@ $ task default
 
 > The `output` option can also be specified by the `--output` or `-o` flags.
 
+## Short task syntax
+
+Starting on Task v3, you can now write tasks with a shorter syntax if they
+have the default settings (e.g. no custom `env:`, `vars:`, `silent:` , etc):
+
+```yaml
+version: '3'
+
+tasks:
+  build: go build -v -o ./app{{exeExt}} .
+
+  build:
+    - task: build
+    - ./app{{exeExt}} -h localhost -p 8080
+```
+
 ## Watch tasks
 
-If you give a `--watch` or `-w` argument, task will watch for file changes
+With the flags `--watch` or `-w` task will watch for file changes
 and run the task again. This requires the `sources` attribute to be given,
-so task know which files to watch.
+so task knows which files to watch.
 
 [gotemplate]: https://golang.org/pkg/text/template/
 [minify]: https://github.com/tdewolff/minify/tree/master/cmd/minify
